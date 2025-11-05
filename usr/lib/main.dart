@@ -1,1 +1,558 @@
-import 'package:flutter/material.dart';\nimport 'package:flutter/services.dart';\nimport 'dart:async';\n\nvoid main() {\n  WidgetsFlutterBinding.ensureInitialized();\n  SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);\n  runApp(const MarioGame());\n}\n\nclass MarioGame extends StatelessWidget {\n  const MarioGame({super.key});\n\n  @override\n  Widget build(BuildContext context) {\n    return MaterialApp(\n      title: 'Mario Game',\n      debugShowCheckedModeBanner: false,\n      theme: ThemeData(\n        primarySwatch: Colors.blue,\      ),\n      home: const GameScreen(),\n    );\n  }\n}\n\nclass GameScreen extends StatefulWidget {\n  const GameScreen({super.key});\n\n  @override\n  State<GameScreen> createState() => _GameScreenState();\n}\n\nclass _GameScreenState extends State<GameScreen> {\n  // Mario position and physics\n  double marioX = 0.1;\n  double marioY = 0.5;\n  double marioVelocityY = 0;\n  double gravity = 0.8;\n  double jumpStrength = -12.0;\n  bool isJumping = false;\n  \n  // Game state\n  bool gameStarted = false;\n  int score = 0;\n  bool gameOver = false;\n  \n  // Obstacles\n  List<Obstacle> obstacles = [];\n  double obstacleSpeed = 0.02;\n  \n  // Animation\n  Timer? gameLoop;\n  int marioFrame = 0;\n  Timer? animationTimer;\n  \n  // Mario direction\n  bool facingRight = true;\n  double moveSpeed = 0.03;\n  bool movingLeft = false;\n  bool movingRight = false;\n\n  @override\n  void initState() {\n    super.initState();\n    _initializeObstacles();\n  }\n\n  void _initializeObstacles() {\n    obstacles = [\n      Obstacle(x: 1.5, width: 0.15, height: 0.3, type: ObstacleType.pipe),\n      Obstacle(x: 2.5, width: 0.15, height: 0.4, type: ObstacleType.pipe),\n      Obstacle(x: 4.0, width: 0.2, height: 0.2, type: ObstacleType.block),\n      Obstacle(x: 5.5, width: 0.15, height: 0.3, type: ObstacleType.pipe),\n    ];\n  }\n\n  void startGame() {\n    setState(() {\n      gameStarted = true;\n      gameOver = false;\n      score = 0;\n      marioX = 0.1;\n      marioY = 0.5;\n      marioVelocityY = 0;\n      _initializeObstacles();\n    });\n    \n    gameLoop = Timer.periodic(const Duration(milliseconds: 30), (timer) {\n      updateGame();\n    });\n    \n    animationTimer = Timer.periodic(const Duration(milliseconds: 150), (timer) {\n      setState(() {\n        marioFrame = (marioFrame + 1) % 2;\n      });\n    });\n  }\n\n  void updateGame() {\n    if (gameOver) return;\n    \n    setState(() {\n      // Apply gravity\n      marioVelocityY += gravity;\n      marioY += marioVelocityY * 0.01;\n      \n      // Ground collision\n      if (marioY > 0.5) {\n        marioY = 0.5;\n        marioVelocityY = 0;\n        isJumping = false;\n      }\n      \n      // Horizontal movement\n      if (movingRight) {\n        marioX += moveSpeed;\n        facingRight = true;\n      }\n      if (movingLeft && marioX > 0) {\n        marioX -= moveSpeed;\n        facingRight = false;\n      }\n      \n      // Move obstacles\n      for (var obstacle in obstacles) {\n        obstacle.x -= obstacleSpeed;\n        \n        // Reset obstacle position when it goes off screen\n        if (obstacle.x < -0.5) {\n          obstacle.x = obstacles.map((o) => o.x).reduce((a, b) => a > b ? a : b) + 1.5;\n          score += 10;\n        }\n        \n        // Check collision\n        if (checkCollision(obstacle)) {\n          endGame();\n        }\n      }\n      \n      // Prevent Mario from going off screen\n      if (marioX > 1.2) marioX = 1.2;\n    });\n  }\n\n  bool checkCollision(Obstacle obstacle) {\n    double marioWidth = 0.1;\n    double marioHeight = 0.15;\n    \n    return marioX < obstacle.x + obstacle.width &&\n           marioX + marioWidth > obstacle.x &&\n           marioY < 0.5 &&\n           marioY + marioHeight > 0.5 - obstacle.height;\n  }\n\n  void jump() {\n    if (!isJumping && gameStarted && !gameOver) {\n      setState(() {\n        marioVelocityY = jumpStrength;\n        isJumping = true;\n      });\n    }\n  }\n\n  void endGame() {\n    gameOver = true;\n    gameLoop?.cancel();\n    animationTimer?.cancel();\n  }\n\n  @override\n  void dispose() {\n    gameLoop?.cancel();\n    animationTimer?.cancel();\n    super.dispose();\n  }\n\n  @override\n  Widget build(BuildContext context) {\n    double screenWidth = MediaQuery.of(context).size.width;\n    double screenHeight = MediaQuery.of(context).size.height;\n    \n    return Scaffold(\n      body: GestureDetector(\n        onTap: () {\n          if (!gameStarted) {\n            startGame();\n          } else {\n            jump();\n          }\n        },\n        child: Container(\n          decoration: const BoxDecoration(\n            gradient: LinearGradient(\n              begin: Alignment.topCenter,\n              end: Alignment.bottomCenter,\n              colors: [Color(0xFF5C94FC), Color(0xFF5C94FC), Color(0xFF8BC34A)],\n              stops: [0.0, 0.7, 0.7],\n            ),\n          ),\n          child: Stack(\n            children: [\n              // Ground\n              Align(\n                alignment: Alignment.bottomCenter,\n                child: Container(\n                  height: screenHeight * 0.3,\n                  color: const Color(0xFFD2691E),\n                  child: Stack(\n                    children: [\n                      // Ground pattern\n                      ...List.generate(20, (index) {\n                        return Positioned(\n                          left: index * screenWidth * 0.1,\n                          top: 10,\n                          child: Container(\n                            width: screenWidth * 0.08,\n                            height: 5,\n                            color: const Color(0xFFA0522D),\n                          ),\n                        );\n                      }),\n                    ],\n                  ),\n                ),\n              ),\n              \n              // Obstacles\n              ...obstacles.map((obstacle) => Positioned(\n                left: obstacle.x * screenWidth,\n                bottom: screenHeight * 0.3,\n                child: Container(\n                  width: obstacle.width * screenWidth,\n                  height: obstacle.height * screenHeight,\n                  decoration: BoxDecoration(\n                    color: obstacle.type == ObstacleType.pipe \n                        ? Colors.green[700] \n                        : Colors.brown[400],\n                    border: Border.all(color: Colors.black, width: 2),\n                    borderRadius: obstacle.type == ObstacleType.block\n                        ? BorderRadius.circular(5)\n                        : BorderRadius.zero,\n                  ),\n                  child: obstacle.type == ObstacleType.pipe\n                      ? Column(\n                          children: [\n                            Container(\n                              height: 20,\n                              color: Colors.green[800],\n                            ),\n                            Expanded(\n                              child: Container(\n                                color: Colors.green[700],\n                              ),\n                            ),\n                          ],\n                        )\n                      : Center(\n                          child: Text(\n                            '?',\n                            style: TextStyle(\n                              color: Colors.yellow[700],\n                              fontSize: 30,\n                              fontWeight: FontWeight.bold,\n                            ),\n                          ),\n                        ),\n                ),\n              )),\n              \n              // Mario\n              Positioned(\n                left: marioX * screenWidth,\n                top: marioY * screenHeight,\n                child: Transform(\n                  alignment: Alignment.center,\n                  transform: Matrix4.identity()..scale(facingRight ? 1.0 : -1.0, 1.0),\n                  child: Container(\n                    width: 50,\n                    height: 60,\n                    child: CustomPaint(\n                      painter: MarioPainter(frame: marioFrame),\n                    ),\n                  ),\n                ),\n              ),\n              \n              // Score\n              Positioned(\n                top: 20,\n                left: 20,\n                child: Container(\n                  padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),\n                  decoration: BoxDecoration(\n                    color: Colors.black.withOpacity(0.6),\n                    borderRadius: BorderRadius.circular(10),\n                  ),\n                  child: Text(\n                    'النقاط: $score',\n                    style: const TextStyle(\n                      color: Colors.white,\n                      fontSize: 24,\n                      fontWeight: FontWeight.bold,\n                    ),\n                  ),\n                ),\n              ),\n              \n              // Controls\n              if (gameStarted && !gameOver)\n                Positioned(\n                  bottom: 40,\n                  left: 20,\n                  child: Row(\n                    children: [\n                      GestureDetector(\n                        onTapDown: (_) => setState(() => movingLeft = true),\n                        onTapUp: (_) => setState(() => movingLeft = false),\n                        onTapCancel: () => setState(() => movingLeft = false),\n                        child: Container(\n                          width: 70,\n                          height: 70,\n                          decoration: BoxDecoration(\n                            color: Colors.white.withOpacity(0.3),\n                            shape: BoxShape.circle,\n                            border: Border.all(color: Colors.white, width: 3),\n                          ),\n                          child: const Icon(Icons.arrow_back, color: Colors.white, size: 35),\n                        ),\n                      ),\n                      const SizedBox(width: 15),\n                      GestureDetector(\n                        onTapDown: (_) => setState(() => movingRight = true),\n                        onTapUp: (_) => setState(() => movingRight = false),\n                        onTapCancel: () => setState(() => movingRight = false),\n                        child: Container(\n                          width: 70,\n                          height: 70,\n                          decoration: BoxDecoration(\n                            color: Colors.white.withOpacity(0.3),\n                            shape: BoxShape.circle,\n                            border: Border.all(color: Colors.white, width: 3),\n                          ),\n                          child: const Icon(Icons.arrow_forward, color: Colors.white, size: 35),\n                        ),\n                      ),\n                    ],\n                  ),\n                ),\n              \n              // Jump button\n              if (gameStarted && !gameOver)\n                Positioned(\n                  bottom: 40,\n                  right: 20,\n                  child: GestureDetector(\n                    onTap: jump,\n                    child: Container(\n                      width: 80,\n                      height: 80,\n                      decoration: BoxDecoration(\n                        color: Colors.red.withOpacity(0.7),\n                        shape: BoxShape.circle,\n                        border: Border.all(color: Colors.white, width: 3),\n                      ),\n                      child: const Center(\n                        child: Text(\n                          'قفز',\n                          style: TextStyle(\n                            color: Colors.white,\n                            fontSize: 20,\n                            fontWeight: FontWeight.bold,\n                          ),\n                        ),\n                      ),\n                    ),\n                  ),\n                ),\n              \n              // Start screen\n              if (!gameStarted)\n                Container(\n                  color: Colors.black.withOpacity(0.7),\n                  child: Center(\n                    child: Column(\n                      mainAxisAlignment: MainAxisAlignment.center,\n                      children: [\n                        const Text(\n                          '🍄 لعبة ماريو 🍄',\n                          style: TextStyle(\n                            color: Colors.white,\n                            fontSize: 48,\n                            fontWeight: FontWeight.bold,\n                          ),\n                        ),\n                        const SizedBox(height: 30),\n                        ElevatedButton(\n                          onPressed: startGame,\n                          style: ElevatedButton.styleFrom(\n                            backgroundColor: Colors.red,\n                            padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),\n                            shape: RoundedRectangleBorder(\n                              borderRadius: BorderRadius.circular(30),\n                            ),\n                          ),\n                          child: const Text(\n                            'ابدأ اللعبة',\n                            style: TextStyle(\n                              fontSize: 28,\n                              fontWeight: FontWeight.bold,\n                              color: Colors.white,\n                            ),\n                          ),\n                        ),\n                        const SizedBox(height: 20),\n                        const Text(\n                          'اضغط للقفز - تجنب العقبات',\n                          style: TextStyle(\n                            color: Colors.white70,\n                            fontSize: 20,\n                          ),\n                        ),\n                      ],\n                    ),\n                  ),\n                ),\n              \n              // Game over screen\n              if (gameOver)\n                Container(\n                  color: Colors.black.withOpacity(0.8),\n                  child: Center(\n                    child: Column(\n                      mainAxisAlignment: MainAxisAlignment.center,\n                      children: [\n                        const Text(\n                          '💥 انتهت اللعبة 💥',\n                          style: TextStyle(\n                            color: Colors.red,\n                            fontSize: 48,\n                            fontWeight: FontWeight.bold,\n                          ),\n                        ),\n                        const SizedBox(height: 20),\n                        Text(\n                          'النقاط النهائية: $score',\n                          style: const TextStyle(\n                            color: Colors.white,\n                            fontSize: 32,\n                            fontWeight: FontWeight.bold,\n                          ),\n                        ),\n                        const SizedBox(height: 30),\n                        ElevatedButton(\n                          onPressed: () {\n                            setState(() {\n                              gameStarted = false;\n                            });\n                          },\n                          style: ElevatedButton.styleFrom(\n                            backgroundColor: Colors.green,\n                            padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),\n                            shape: RoundedRectangleBorder(\n                              borderRadius: BorderRadius.circular(30),\n                            ),\n                          ),\n                          child: const Text(\n                            'العب مرة أخرى',\n                            style: TextStyle(\n                              fontSize: 28,\n                              fontWeight: FontWeight.bold,\n                              color: Colors.white,\n                            ),\n                          ),\n                        ),\n                      ],\n                    ),\n                  ),\n                ),\n            ],\n          ),\n        ),\n      ),\n    );\n  }\n}\n\nclass Obstacle {\n  double x;\n  double width;\n  double height;\n  ObstacleType type;\n  \n  Obstacle({\n    required this.x,\n    required this.width,\n    required this.height,\n    required this.type,\n  });\n}\n\nenum ObstacleType {\n  pipe,\n  block,\n}\n\nclass MarioPainter extends CustomPainter {\n  final int frame;\n  \n  MarioPainter({required this.frame});\n  \n  @override\n  void paint(Canvas canvas, Size size) {\n    final paint = Paint();\n    \n    // Red hat\n    paint.color = Colors.red;\n    canvas.drawRect(Rect.fromLTWH(10, 5, 30, 15), paint);\n    \n    // Face\n    paint.color = const Color(0xFFFFDBB3);\n    canvas.drawRect(Rect.fromLTWH(10, 20, 30, 20), paint);\n    \n    // Eyes\n    paint.color = Colors.black;\n    canvas.drawCircle(const Offset(20, 28), 3, paint);\n    canvas.drawCircle(const Offset(30, 28), 3, paint);\n    \n    // Mustache\n    paint.color = Colors.brown[900]!;\n    canvas.drawRect(Rect.fromLTWH(15, 33, 20, 5), paint);\n    \n    // Body (red shirt)\n    paint.color = Colors.red;\n    canvas.drawRect(Rect.fromLTWH(15, 40, 20, 15), paint);\n    \n    // Blue overalls\n    paint.color = Colors.blue[900]!;\n    canvas.drawRect(Rect.fromLTWH(12, 45, 8, 10), paint);\n    canvas.drawRect(Rect.fromLTWH(30, 45, 8, 10), paint);\n    \n    // Legs (animated)\n    paint.color = Colors.blue[700]!;\n    if (frame == 0) {\n      canvas.drawRect(Rect.fromLTWH(15, 55, 7, 5), paint);\n      canvas.drawRect(Rect.fromLTWH(28, 55, 7, 5), paint);\n    } else {\n      canvas.drawRect(Rect.fromLTWH(13, 55, 7, 5), paint);\n      canvas.drawRect(Rect.fromLTWH(30, 55, 7, 5), paint);\n    }\n  }\n  \n  @override\n  bool shouldRepaint(MarioPainter oldDelegate) => oldDelegate.frame != frame;\n}
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:async';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
+  runApp(const MarioGame());
+}
+
+class MarioGame extends StatelessWidget {
+  const MarioGame({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Mario Game',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
+      home: const GameScreen(),
+    );
+  }
+}
+
+class GameScreen extends StatefulWidget {
+  const GameScreen({super.key});
+
+  @override
+  State<GameScreen> createState() => _GameScreenState();
+}
+
+class _GameScreenState extends State<GameScreen> {
+  // Mario position and physics
+  double marioX = 0.1;
+  double marioY = 0.5;
+  double marioVelocityY = 0;
+  double gravity = 0.8;
+  double jumpStrength = -12.0;
+  bool isJumping = false;
+  
+  // Game state
+  bool gameStarted = false;
+  int score = 0;
+  bool gameOver = false;
+  
+  // Obstacles
+  List<Obstacle> obstacles = [];
+  double obstacleSpeed = 0.02;
+  
+  // Animation
+  Timer? gameLoop;
+  int marioFrame = 0;
+  Timer? animationTimer;
+  
+  // Mario direction
+  bool facingRight = true;
+  double moveSpeed = 0.03;
+  bool movingLeft = false;
+  bool movingRight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeObstacles();
+  }
+
+  void _initializeObstacles() {
+    obstacles = [
+      Obstacle(x: 1.5, width: 0.15, height: 0.3, type: ObstacleType.pipe),
+      Obstacle(x: 2.5, width: 0.15, height: 0.4, type: ObstacleType.pipe),
+      Obstacle(x: 4.0, width: 0.2, height: 0.2, type: ObstacleType.block),
+      Obstacle(x: 5.5, width: 0.15, height: 0.3, type: ObstacleType.pipe),
+    ];
+  }
+
+  void startGame() {
+    setState(() {
+      gameStarted = true;
+      gameOver = false;
+      score = 0;
+      marioX = 0.1;
+      marioY = 0.5;
+      marioVelocityY = 0;
+      _initializeObstacles();
+    });
+    
+    gameLoop = Timer.periodic(const Duration(milliseconds: 30), (timer) {
+      updateGame();
+    });
+    
+    animationTimer = Timer.periodic(const Duration(milliseconds: 150), (timer) {
+      setState(() {
+        marioFrame = (marioFrame + 1) % 2;
+      });
+    });
+  }
+
+  void updateGame() {
+    if (gameOver) return;
+    
+    setState(() {
+      // Apply gravity
+      marioVelocityY += gravity;
+      marioY += marioVelocityY * 0.01;
+      
+      // Ground collision
+      if (marioY > 0.5) {
+        marioY = 0.5;
+        marioVelocityY = 0;
+        isJumping = false;
+      }
+      
+      // Horizontal movement
+      if (movingRight) {
+        marioX += moveSpeed;
+        facingRight = true;
+      }
+      if (movingLeft && marioX > 0) {
+        marioX -= moveSpeed;
+        facingRight = false;
+      }
+      
+      // Move obstacles
+      for (var obstacle in obstacles) {
+        obstacle.x -= obstacleSpeed;
+        
+        // Reset obstacle position when it goes off screen
+        if (obstacle.x < -0.5) {
+          obstacle.x = obstacles.map((o) => o.x).reduce((a, b) => a > b ? a : b) + 1.5;
+          score += 10;
+        }
+        
+        // Check collision
+        if (checkCollision(obstacle)) {
+          endGame();
+        }
+      }
+      
+      // Prevent Mario from going off screen
+      if (marioX > 1.2) marioX = 1.2;
+    });
+  }
+
+  bool checkCollision(Obstacle obstacle) {
+    double marioWidth = 0.1;
+    double marioHeight = 0.15;
+    
+    return marioX < obstacle.x + obstacle.width &&
+           marioX + marioWidth > obstacle.x &&
+           marioY < 0.5 &&
+           marioY + marioHeight > 0.5 - obstacle.height;
+  }
+
+  void jump() {
+    if (!isJumping && gameStarted && !gameOver) {
+      setState(() {
+        marioVelocityY = jumpStrength;
+        isJumping = true;
+      });
+    }
+  }
+
+  void endGame() {
+    gameOver = true;
+    gameLoop?.cancel();
+    animationTimer?.cancel();
+  }
+
+  @override
+  void dispose() {
+    gameLoop?.cancel();
+    animationTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    double screenWidth = MediaQuery.of(context).size.width;
+    double screenHeight = MediaQuery.of(context).size.height;
+    
+    return Scaffold(
+      body: GestureDetector(
+        onTap: () {
+          if (!gameStarted) {
+            startGame();
+          } else {
+            jump();
+          }
+        },
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF5C94FC), Color(0xFF5C94FC), Color(0xFF8BC34A)],
+              stops: [0.0, 0.7, 0.7],
+            ),
+          ),
+          child: Stack(
+            children: [
+              // Ground
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  height: screenHeight * 0.3,
+                  color: const Color(0xFFD2691E),
+                  child: Stack(
+                    children: [
+                      // Ground pattern
+                      ...List.generate(20, (index) {
+                        return Positioned(
+                          left: index * screenWidth * 0.1,
+                          top: 10,
+                          child: Container(
+                            width: screenWidth * 0.08,
+                            height: 5,
+                            color: const Color(0xFFA0522D),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // Obstacles
+              ...obstacles.map((obstacle) => Positioned(
+                left: obstacle.x * screenWidth,
+                bottom: screenHeight * 0.3,
+                child: Container(
+                  width: obstacle.width * screenWidth,
+                  height: obstacle.height * screenHeight,
+                  decoration: BoxDecoration(
+                    color: obstacle.type == ObstacleType.pipe 
+                        ? Colors.green[700] 
+                        : Colors.brown[400],
+                    border: Border.all(color: Colors.black, width: 2),
+                    borderRadius: obstacle.type == ObstacleType.block
+                        ? BorderRadius.circular(5)
+                        : BorderRadius.zero,
+                  ),
+                  child: obstacle.type == ObstacleType.pipe
+                      ? Column(
+                          children: [
+                            Container(
+                              height: 20,
+                              color: Colors.green[800],
+                            ),
+                            Expanded(
+                              child: Container(
+                                color: Colors.green[700],
+                              ),
+                            ),
+                          ],
+                        )
+                      : Center(
+                          child: Text(
+                            '?',
+                            style: TextStyle(
+                              color: Colors.yellow[700],
+                              fontSize: 30,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                ),
+              )),
+              
+              // Mario
+              Positioned(
+                left: marioX * screenWidth,
+                top: marioY * screenHeight,
+                child: Transform(
+                  alignment: Alignment.center,
+                  transform: Matrix4.identity()..scale(facingRight ? 1.0 : -1.0, 1.0),
+                  child: SizedBox(
+                    width: 50,
+                    height: 60,
+                    child: CustomPaint(
+                      painter: MarioPainter(frame: marioFrame),
+                    ),
+                  ),
+                ),
+              ),
+              
+              // Score
+              Positioned(
+                top: 20,
+                left: 20,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.6),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    'النقاط: $score',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              
+              // Controls
+              if (gameStarted && !gameOver)
+                Positioned(
+                  bottom: 40,
+                  left: 20,
+                  child: Row(
+                    children: [
+                      GestureDetector(
+                        onTapDown: (_) => setState(() => movingLeft = true),
+                        onTapUp: (_) => setState(() => movingLeft = false),
+                        onTapCancel: () => setState(() => movingLeft = false),
+                        child: Container(
+                          width: 70,
+                          height: 70,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.3),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 3),
+                          ),
+                          child: const Icon(Icons.arrow_back, color: Colors.white, size: 35),
+                        ),
+                      ),
+                      const SizedBox(width: 15),
+                      GestureDetector(
+                        onTapDown: (_) => setState(() => movingRight = true),
+                        onTapUp: (_) => setState(() => movingRight = false),
+                        onTapCancel: () => setState(() => movingRight = false),
+                        child: Container(
+                          width: 70,
+                          height: 70,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.3),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 3),
+                          ),
+                          child: const Icon(Icons.arrow_forward, color: Colors.white, size: 35),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              
+              // Jump button
+              if (gameStarted && !gameOver)
+                Positioned(
+                  bottom: 40,
+                  right: 20,
+                  child: GestureDetector(
+                    onTap: jump,
+                    child: Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.7),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 3),
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'قفز',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              
+              // Start screen
+              if (!gameStarted)
+                Container(
+                  color: Colors.black.withOpacity(0.7),
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text(
+                          '🍄 لعبة ماريو 🍄',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 48,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 30),
+                        ElevatedButton(
+                          onPressed: startGame,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                          ),
+                          child: const Text(
+                            'ابدأ اللعبة',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'اضغط للقفز - تجنب العقبات',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 20,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              
+              // Game over screen
+              if (gameOver)
+                Container(
+                  color: Colors.black.withOpacity(0.8),
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text(
+                          '💥 انتهت اللعبة 💥',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontSize: 48,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          'النقاط النهائية: $score',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 30),
+                        ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              gameStarted = false;
+                            });
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                          ),
+                          child: const Text(
+                            'العب مرة أخرى',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class Obstacle {
+  double x;
+  double width;
+  double height;
+  ObstacleType type;
+  
+  Obstacle({
+    required this.x,
+    required this.width,
+    required this.height,
+    required this.type,
+  });
+}
+
+enum ObstacleType {
+  pipe,
+  block,
+}
+
+class MarioPainter extends CustomPainter {
+  final int frame;
+  
+  MarioPainter({required this.frame});
+  
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint();
+    
+    // Red hat
+    paint.color = Colors.red;
+    canvas.drawRect(Rect.fromLTWH(10, 5, 30, 15), paint);
+    
+    // Face
+    paint.color = const Color(0xFFFFDBB3);
+    canvas.drawRect(Rect.fromLTWH(10, 20, 30, 20), paint);
+    
+    // Eyes
+    paint.color = Colors.black;
+    canvas.drawCircle(const Offset(20, 28), 3, paint);
+    canvas.drawCircle(const Offset(30, 28), 3, paint);
+    
+    // Mustache
+    paint.color = Colors.brown[900]!;
+    canvas.drawRect(Rect.fromLTWH(15, 33, 20, 5), paint);
+    
+    // Body (red shirt)
+    paint.color = Colors.red;
+    canvas.drawRect(Rect.fromLTWH(15, 40, 20, 15), paint);
+    
+    // Blue overalls
+    paint.color = Colors.blue[900]!;
+    canvas.drawRect(Rect.fromLTWH(12, 45, 8, 10), paint);
+    canvas.drawRect(Rect.fromLTWH(30, 45, 8, 10), paint);
+    
+    // Legs (animated)
+    paint.color = Colors.blue[700]!;
+    if (frame == 0) {
+      canvas.drawRect(Rect.fromLTWH(15, 55, 7, 5), paint);
+      canvas.drawRect(Rect.fromLTWH(28, 55, 7, 5), paint);
+    } else {
+      canvas.drawRect(Rect.fromLTWH(13, 55, 7, 5), paint);
+      canvas.drawRect(Rect.fromLTWH(30, 55, 7, 5), paint);
+    }
+  }
+  
+  @override
+  bool shouldRepaint(MarioPainter oldDelegate) => oldDelegate.frame != frame;
+}
